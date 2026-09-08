@@ -1,13 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {IVault} from "./interfaces/IVault.sol";
-
-interface IERC20Minimal {
-    function balanceOf(address account) external view returns (uint256);
-    function transfer(address to, uint256 amount) external returns (bool);
-    function transferFrom(address from, address to, uint256 amount) external returns (bool);
-}
+import { IVault } from "./interfaces/IVault.sol";
+import { IERC20Minimal } from "./interfaces/IERC20Minimal.sol";
 
 /// @title SecureVault
 /// @notice A compact, single-asset vault with non-transferable internal shares.
@@ -17,7 +12,9 @@ contract SecureVault is IVault {
     error ZeroAddress();
     error ZeroAmount();
     error ZeroShares();
+    error ZeroMinShares();
     error ZeroAssetsOut();
+    error SlippageExceeded();
     error DepositCapExceeded();
     error InsufficientShares();
     error InsufficientAssets();
@@ -38,6 +35,8 @@ contract SecureVault is IVault {
 
     uint256 public override totalShares;
     mapping(address account => uint256 shares) public override sharesOf;
+    /// @dev Assets accepted by the vault and represented by internal shares.
+    uint256 public managedAssets;
 
     uint256 private _entered;
 
@@ -67,7 +66,18 @@ contract SecureVault is IVault {
     }
 
     function totalAssets() public view override returns (uint256) {
+        return managedAssets;
+    }
+
+    /// @notice Raw ERC-20 balance, including direct transfers not represented by shares.
+    function rawAssetBalance() public view returns (uint256) {
         return IERC20Minimal(asset).balanceOf(address(this));
+    }
+
+    /// @notice Assets sent directly to the vault and intentionally excluded from pricing.
+    function unaccountedAssets() public view returns (uint256) {
+        uint256 rawBalance = rawAssetBalance();
+        return rawBalance > managedAssets ? rawBalance - managedAssets : 0;
     }
 
     function previewDeposit(uint256 assets) public view override returns (uint256 shares) {
@@ -91,54 +101,56 @@ contract SecureVault is IVault {
         return (shares * totalAssets()) / totalShares;
     }
 
-    function deposit(uint256 assets, address receiver)
+    function deposit(uint256 assets, address receiver, uint256 minShares)
         external
         override
-        whenNotPaused
         nonReentrant
+        whenNotPaused
         returns (uint256 shares)
     {
         if (assets == 0) revert ZeroAmount();
         if (receiver == address(0)) revert ZeroAddress();
+        if (minShares == 0) revert ZeroMinShares();
 
-        uint256 beforeAssets = totalAssets();
+        uint256 beforeRawBalance = rawAssetBalance();
+        uint256 currentAssets = managedAssets;
+        if (beforeRawBalance < currentAssets) revert Insolvent();
         _safeTransferFrom(msg.sender, address(this), assets);
-        uint256 received = totalAssets() - beforeAssets;
+        uint256 afterRawBalance = rawAssetBalance();
+        if (afterRawBalance < beforeRawBalance) revert Insolvent();
+        uint256 received = afterRawBalance - beforeRawBalance;
         if (received == 0) revert ZeroAmount();
-        if (beforeAssets > depositCap || received > depositCap - beforeAssets) {
+        if (currentAssets > depositCap || received > depositCap - currentAssets) {
             revert DepositCapExceeded();
         }
 
-        if (totalShares == 0) {
-            shares = received;
-        } else {
-            if (beforeAssets == 0) revert Insolvent();
-            shares = (received * totalShares) / beforeAssets;
-        }
-        if (shares == 0) revert ZeroShares();
+        shares = _calculateDepositShares(received, currentAssets, minShares);
 
         sharesOf[receiver] += shares;
         totalShares += shares;
+        managedAssets = currentAssets + received;
         emit Deposited(msg.sender, receiver, received, shares);
     }
 
     function withdraw(uint256 assets, address receiver)
         external
         override
-        whenNotPaused
         nonReentrant
+        whenNotPaused
         returns (uint256 shares)
     {
         if (assets == 0) revert ZeroAmount();
         if (receiver == address(0)) revert ZeroAddress();
 
-        uint256 beforeAssets = totalAssets();
-        if (assets > beforeAssets) revert InsufficientAssets();
+        uint256 currentAssets = managedAssets;
+        if (rawAssetBalance() < currentAssets) revert Insolvent();
+        if (assets > currentAssets) revert InsufficientAssets();
         shares = previewWithdraw(assets);
         if (shares > sharesOf[msg.sender]) revert InsufficientShares();
 
         sharesOf[msg.sender] -= shares;
         totalShares -= shares;
+        managedAssets = currentAssets - assets;
         _safeTransfer(receiver, assets);
         emit Withdrawn(msg.sender, receiver, assets, shares);
     }
@@ -146,20 +158,23 @@ contract SecureVault is IVault {
     function redeem(uint256 shares, address receiver)
         external
         override
-        whenNotPaused
         nonReentrant
+        whenNotPaused
         returns (uint256 assets)
     {
         if (shares == 0) revert ZeroAmount();
         if (receiver == address(0)) revert ZeroAddress();
         if (shares > sharesOf[msg.sender]) revert InsufficientShares();
 
+        uint256 currentAssets = managedAssets;
+        if (rawAssetBalance() < currentAssets) revert Insolvent();
         assets = previewRedeem(shares);
         if (assets == 0) revert ZeroAssetsOut();
-        if (assets > totalAssets()) revert InsufficientAssets();
+        if (assets > currentAssets) revert InsufficientAssets();
 
         sharesOf[msg.sender] -= shares;
         totalShares -= shares;
+        managedAssets = currentAssets - assets;
         _safeTransfer(receiver, assets);
         emit Withdrawn(msg.sender, receiver, assets, shares);
     }
@@ -188,14 +203,26 @@ contract SecureVault is IVault {
         emit OwnershipTransferred(previousOwner, msg.sender);
     }
 
-    function recoverNonAssetToken(address token, address receiver, uint256 amount) external onlyOwner {
+    function recoverNonAssetToken(address token, address receiver, uint256 amount)
+        external
+        nonReentrant
+        onlyOwner
+    {
         if (token == asset) revert AssetRecoveryForbidden();
         if (receiver == address(0)) revert ZeroAddress();
         _safeExternalTransfer(token, receiver, amount);
     }
 
     function _safeTransfer(address receiver, uint256 amount) internal {
+        uint256 beforeReceiverBalance = IERC20Minimal(asset).balanceOf(receiver);
         _safeExternalTransfer(asset, receiver, amount);
+        uint256 afterReceiverBalance = IERC20Minimal(asset).balanceOf(receiver);
+        if (
+            afterReceiverBalance < beforeReceiverBalance
+                || afterReceiverBalance - beforeReceiverBalance != amount
+        ) {
+            revert TransferFailed();
+        }
     }
 
     function _safeTransferFrom(address from, address receiver, uint256 amount) internal {
@@ -207,10 +234,24 @@ contract SecureVault is IVault {
         }
     }
 
+    function _calculateDepositShares(uint256 received, uint256 currentAssets, uint256 minShares)
+        private
+        view
+        returns (uint256 shares)
+    {
+        if (totalShares == 0) {
+            shares = received;
+        } else {
+            if (currentAssets == 0) revert Insolvent();
+            shares = (received * totalShares) / currentAssets;
+        }
+        if (shares == 0) revert ZeroShares();
+        if (shares < minShares) revert SlippageExceeded();
+    }
+
     function _safeExternalTransfer(address token, address receiver, uint256 amount) internal {
-        (bool success, bytes memory data) = token.call(
-            abi.encodeWithSelector(IERC20Minimal.transfer.selector, receiver, amount)
-        );
+        (bool success, bytes memory data) =
+            token.call(abi.encodeWithSelector(IERC20Minimal.transfer.selector, receiver, amount));
         if (!success || (data.length != 0 && (data.length < 32 || !abi.decode(data, (bool))))) {
             revert TransferFailed();
         }

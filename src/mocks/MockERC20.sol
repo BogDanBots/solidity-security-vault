@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-contract MockERC20 {
+import { IERC20Minimal } from "../interfaces/IERC20Minimal.sol";
+
+contract MockERC20 is IERC20Minimal {
     string public constant name = "Portfolio Test Token";
     string public constant symbol = "PTT";
     uint8 public constant decimals = 18;
 
-    mapping(address account => uint256 balance) public balanceOf;
+    mapping(address account => uint256 balance) public override balanceOf;
     mapping(address account => mapping(address spender => uint256 amount)) public allowance;
     uint256 public totalSupply;
 
@@ -20,7 +22,7 @@ contract MockERC20 {
         return true;
     }
 
-    function transfer(address to, uint256 amount) external virtual returns (bool) {
+    function transfer(address to, uint256 amount) external virtual override returns (bool) {
         _move(msg.sender, to, amount);
         return true;
     }
@@ -28,6 +30,7 @@ contract MockERC20 {
     function transferFrom(address from, address to, uint256 amount)
         external
         virtual
+        override
         returns (bool)
     {
         uint256 approved = allowance[from][msg.sender];

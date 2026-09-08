@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test} from "forge-std/Test.sol";
-import {SecureVault} from "../src/SecureVault.sol";
-import {MockERC20} from "../src/mocks/MockERC20.sol";
+import { Test } from "forge-std/Test.sol";
+import { SecureVault } from "../src/SecureVault.sol";
+import { MockERC20 } from "../src/mocks/MockERC20.sol";
 
 contract SecureVaultFuzzTest is Test {
     MockERC20 internal token;
@@ -21,7 +21,7 @@ contract SecureVaultFuzzTest is Test {
     function testFuzzDepositThenRedeem(uint128 amount) public {
         vm.assume(amount > 0);
         vm.startPrank(actor);
-        uint256 shares = vault.deposit(amount, actor);
+        uint256 shares = vault.deposit(amount, actor, amount);
         uint256 assets = vault.redeem(shares, actor);
         vm.stopPrank();
 
@@ -36,7 +36,7 @@ contract SecureVaultFuzzTest is Test {
         vm.assume(depositAmount > 1);
         vm.assume(withdrawAmount > 0 && withdrawAmount <= depositAmount);
         vm.startPrank(actor);
-        vault.deposit(depositAmount, actor);
+        vault.deposit(depositAmount, actor, depositAmount);
         uint256 shares = vault.previewWithdraw(withdrawAmount);
         uint256 burned = vault.withdraw(withdrawAmount, actor);
         vm.stopPrank();
