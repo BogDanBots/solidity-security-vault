@@ -8,15 +8,34 @@ This is an open-source portfolio project, not a production vault and not an audi
 
 - One immutable underlying ERC-20 asset.
 - Non-transferable internal shares to keep the ownership surface small.
-- Actual-received accounting for fee-on-transfer tolerance.
+- A managed-asset ledger that ignores unsolicited donations when pricing shares.
+- A caller-supplied minimum-share constraint on every deposit.
 - Deposit cap, pause control and two-step ownership transfer.
 - No strategy adapter, yield source or live-funds integration.
-- Underlying asset cannot be recovered through the administrative token-recovery function.
+- Underlying asset cannot be recovered through the administrative token-recovery function;
+  direct donations remain observable as unaccounted surplus but are not claimable by shares.
+  Direct donations are permanently locked in this compact design: neither the owner nor
+  share holders can recover or distribute them.
 
 ## Review focus
 
-The most important files are `src/SecureVault.sol`, `docs/threat-model.md` and the Foundry tests. The test suite covers normal flows, rounding, authorization, pause behavior, adversarial token callbacks, fuzzed amounts and stateful invariants.
+The most important files are `src/SecureVault.sol`, `docs/threat-model.md` and the Foundry tests. The test suite covers normal flows, rounding, authorization, pause behavior, donation resistance, adversarial token callbacks, token return failures, incoming fee-on-transfer accounting, fuzzed amounts and stateful invariants with two independent actors, donation actions and cross-account redemption attempts.
 
 ## Verification
 
-Install Foundry and the pinned `forge-std` test dependency, then run the commands in `docs/testing-and-analysis.md`. The repository should only publish measured results from an actual run; no audit, security guarantee or production readiness is implied.
+The repository uses Foundry 1.8.1, Solidity 0.8.24 and Slither 0.11.6 in CI.
+The latest local verification completed with format checks, a successful build,
+13 unit/fuzz tests, and a 64-run stateful invariant campaign at 128 calls per
+run. Slither reported 15 findings; each is reviewed in
+[`docs/slither-results.md`](docs/slither-results.md).
+
+Install Foundry and the pinned `forge-std` test dependency:
+
+```bash
+forge install foundry-rs/forge-std@16cb9c998736cab8f14aebd5199cdf6a02fde055 --no-commit
+```
+
+Then run the commands in
+[`docs/testing-and-analysis.md`](docs/testing-and-analysis.md). This is an
+open-source portfolio project, not an audit, security guarantee or production
+readiness claim.
