@@ -4,7 +4,7 @@ pragma solidity ^0.8.24;
 import { IERC20Minimal } from "../interfaces/IERC20Minimal.sol";
 
 contract MockERC20 is IERC20Minimal {
-    string public constant name = "Portfolio Test Token";
+    string public constant name = "Mock Token";
     string public constant symbol = "PTT";
     uint8 public constant decimals = 18;
 
