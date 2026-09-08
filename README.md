@@ -1,8 +1,23 @@
+[![Solidity checks](https://github.com/BogDanBots/solidity-security-vault/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/BogDanBots/solidity-security-vault/actions/workflows/ci.yml)
+
 # SecureVault — compact Solidity security portfolio project
 
 SecureVault is a deliberately small, single-asset ERC-20 vault written for reviewability. It demonstrates accounting, explicit authorization, reentrancy boundaries, adversarial token testing, fuzzing, invariants and static analysis without introducing an unnecessary strategy layer.
 
 This is an open-source portfolio project, not a production vault and not an audit. It does not copy the private SolTrench vault implementation.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    U[Caller] -->|deposit assets + minShares| V[SecureVault]
+    V -->|measured balance delta| L[managedAssets ledger]
+    L --> S[Non-transferable shares]
+    S -->|withdraw or redeem| V
+    D[Direct donation] --> V
+    V -->|excluded from pricing| X[Unaccounted surplus; permanently locked]
+    T[ERC-20 callback] -.->|external-call boundary| V
+```
 
 ## Architecture
 
