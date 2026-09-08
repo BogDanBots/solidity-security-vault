@@ -19,19 +19,6 @@ flowchart LR
     T[ERC-20 callback] -.->|external-call boundary| V
 ```
 
-## Architecture
-
-```mermaid
-flowchart LR
-    U[Caller] -->|deposit assets + minShares| V[SecureVault]
-    V -->|measured balance delta| L[managedAssets ledger]
-    L --> S[Non-transferable shares]
-    S -->|withdraw or redeem| V
-    D[Direct donation] --> V
-    V -->|excluded from pricing| X[Unaccounted surplus; permanently locked]
-    T[ERC-20 callback] -.->|external-call boundary| V
-```
-
 ## Design choices
 
 - One immutable underlying ERC-20 asset.
