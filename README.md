@@ -36,12 +36,19 @@ flowchart LR
 
 The most important files are `src/SecureVault.sol`, `docs/threat-model.md` and the Foundry tests. The test suite covers normal flows, rounding, authorization, pause behavior, donation resistance, adversarial token callbacks, token return failures, incoming fee-on-transfer accounting, fuzzed amounts and stateful invariants with two independent actors, donation actions and cross-account redemption attempts.
 
+## Current verification status
+
+The `main` branch currently passes the repository's format, build, unit/fuzz,
+invariant and Slither-baseline checks in CI. The Slither findings remain visible
+and are reviewed against an explicit baseline; they are not silently suppressed
+or presented as a clean-audit result.
+
 ## Verification
 
 The repository uses Foundry 1.8.1, Solidity 0.8.24 and Slither 0.11.6 in CI.
 The latest local verification completed with format checks, a successful build,
 13 unit/fuzz tests, and a 64-run stateful invariant campaign at 128 calls per
-run. Slither reported 15 findings; each is reviewed in
+run. Slither's 15 reviewed findings are documented in
 [`docs/slither-results.md`](docs/slither-results.md).
 
 Install Foundry and the pinned `forge-std` test dependency:
